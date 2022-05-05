@@ -36,7 +36,7 @@
 //     random.set(total_bytes);
 // }
 
-use dirstat_rs_exporter::DiskItem;
+use dirstat_rs_exporter::{DiskItem, FileInfo};
 use hyper::{
     header::CONTENT_TYPE,
     service::{make_service_fn, service_fn},
@@ -74,14 +74,26 @@ async fn serve_req(_req: Request<Body>) -> Result<Response<Body>, hyper::Error> 
 
     //TODO mock path
     // // node disk byte total
-    let total_bytes = fs2::total_space("./").unwrap() as f64;
+    let total_bytes = fs2::total_space("/var/lib/docker").unwrap() as f64;
     NODE_DISK_TOTAL_BYTES.set(total_bytes);
 
-    let target_dir = Path::new("./");
-    let usage = DiskItem::from_analyze(&target_dir, false, 1);
+    let target_dir = Path::new("/var/lib/docker");
+    let file_info = FileInfo::from_path(&target_dir, true);
+    let mut volumeid: u64 = 0;
+    match file_info {
+        Ok(f) => match f {
+            FileInfo::Directory { volume_id } => volumeid = volume_id,
+            FileInfo::File { size, volume_id } => {
+                println!("volume_id: {:?} size: {:?}", volume_id, size)
+            }
+        },
+        Err(e) => println!("error : {:?}", e),
+    }
+    let usage = DiskItem::from_analyze(&target_dir, false, volumeid);
     match usage {
-        Ok(u) => println!("{}", u.disk_size), //NODE_DISK_USAGE_BYTES.set(u.disk_size as f64),
-        Err(_) => (),
+        //Ok(u) => println!("disk_size: {:?}", u.disk_size), //NODE_DISK_USAGE_BYTES.set(u.disk_size as f64),
+        Ok(u) => NODE_DISK_USAGE_BYTES.set(u.disk_size as f64),
+        Err(e) => print!("Error: {:?}", e),
     }
 
     let response = Response::builder()
